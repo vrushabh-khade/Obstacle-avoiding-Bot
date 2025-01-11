@@ -1,0 +1,176 @@
+#include <Servo.h>  // Include the Servo library
+
+int LSP = 2;
+int rsp = 3;
+
+Servo myServo;  // Create a servo object to control the servo
+
+#define enA 5  // Enable1 L298 Pin enA 
+#define LMP 7  // Motor1 L298 Pin LMP 
+#define LMN 8  // Motor1 L298 Pin LMN 
+#define RMP 9  // Motor2 L298 Pin RMP 
+#define RMN 10 // Motor2 L298 Pin RMN 
+#define enB 6  // Enable2 L298 Pin enB 
+
+#define trigger A1 // Trigger pin
+#define echo A2    // Echo pin
+
+#define servoPin 13 // Define the pin for the servo
+
+int Set = 30;  // Set distance threshold in cm
+int distance_L, distance_F, distance_R;
+
+void setup() { 
+  Serial.begin(9600); // start serial communication at 9600bps
+
+  pinMode(echo, INPUT); // declare ultrasonic sensor Echo pin as input
+  pinMode(trigger, OUTPUT); // declare ultrasonic sensor Trigger pin as Output  
+
+  pinMode(enA, OUTPUT); // declare as output for L298 Pin enA 
+  pinMode(LMP, OUTPUT); // declare as output for L298 Pin LMP 
+  pinMode(LMN, OUTPUT); // declare as output for L298 Pin LMN 
+  pinMode(RMP, OUTPUT); // declare as output for L298 Pin RMP   
+  pinMode(RMN, OUTPUT); // declare as output for L298 Pin RMN 
+  pinMode(enB, OUTPUT); // declare as output for L298 Pin enB 
+
+  analogWrite(enA, 130); // Set speed for Motor1
+  analogWrite(enB, 130); // Set speed for Motor2
+
+  myServo.attach(servoPin);  // Attach the servo to pin 13
+
+  // Sweep the servo from 70° to 140° and back
+  for (int angle = 70; angle <= 140; angle += 7) {
+    myServo.write(angle);
+    delay(100);
+  }
+  for (int angle = 140; angle >= 0; angle -= 7) {
+    myServo.write(angle);
+    delay(100);
+  }
+  for (int angle = 0; angle <= 70; angle += 7) {
+    myServo.write(angle);
+    delay(100);
+  }
+
+  distance_F = Ultrasonic_read();  // Initial ultrasonic reading
+  delay(500);
+}
+
+void loop() {
+  // Obstacle Avoiding Logic
+  distance_F = Ultrasonic_read();
+  Serial.print("D F="); Serial.println(distance_F);
+
+  // If no obstacle ahead, move forward
+  if (distance_F < 15) {
+    reverse();   // Call the reverse function
+    delay(1000); // Wait a bit after reversing
+  } 
+  else if (distance_F > Set) {
+    forword();
+  } else {
+    // Check left and right sides if obstacle is detected ahead
+    Check_side();
+  }
+
+  delay(5);  // Short delay for stability
+}
+
+// Function to read the ultrasonic sensor
+long Ultrasonic_read() {
+  digitalWrite(trigger, LOW);  // Ensure trigger is LOW for a few microseconds
+  delayMicroseconds(5);
+  digitalWrite(trigger, HIGH); // Send 10-microsecond pulse to trigger the sensor
+  delayMicroseconds(10);
+  digitalWrite(trigger, LOW);  // Turn off trigger
+
+  long time = pulseIn(echo, HIGH, 38000); // Limit to 38ms (max distance ~6.5m)
+
+  if (time == 0) {
+    Serial.println("No echo detected");
+    return 9999; // Return large value if no echo is detected
+  }
+
+  long distance = time / 29 / 2;  // Convert time to distance in cm
+  Serial.print("Distance: "); Serial.println(distance);
+  return distance;
+}
+
+void compareDistance() {
+  if (distance_L > distance_R) {
+    turnLeft();
+    delay(400);  // Adjusted delay for smoother turn
+  } else if (distance_R > distance_L) {
+    turnRight();
+    delay(400);  // Adjusted delay for smoother turn
+  } else {
+    // If both sides are the same, default to turning right (or left)
+    turnRight();
+    delay(400);  // Adjusted delay
+  }
+  forword();  // Move forward after turning
+  delay(600);  // Allow some time to move forward before rechecking
+}
+
+void Check_side() {
+  Stop();  // Stop the robot before checking sides
+  delay(100);
+  
+  // Move servo to check right side (slight angle)
+  myServo.write(135);  // Instead of 140, use 135 degrees
+  delay(150);
+  distance_R = Ultrasonic_read();
+  Serial.print("D R="); Serial.println(distance_R);
+  delay(50);
+
+  // Move servo to check left side (slight angle)
+  myServo.write(45);  // Instead of 0, use 45 degrees
+  delay(150);
+  distance_L = Ultrasonic_read();
+  Serial.print("D L="); Serial.println(distance_L);
+  delay(50);
+
+  // Reset servo to center (90 degrees)
+  myServo.write(90);  
+  delay(150);
+  
+  compareDistance();  // Compare distances and decide direction
+}
+
+void forword() {  // Move forward
+  digitalWrite(LMP, LOW);  // Left Motor backward
+  digitalWrite(LMN, HIGH); // Left Motor forward
+  digitalWrite(RMP, HIGH); // Right Motor forward
+  digitalWrite(RMN, LOW);  // Right Motor backward
+}
+
+void turnRight() { // Turn right
+  digitalWrite(LMP, LOW);  // Left Motor backward
+  digitalWrite(LMN, HIGH); // Left Motor forward
+  digitalWrite(RMP, LOW);  // Right Motor forward
+  digitalWrite(RMN, HIGH); // Right Motor backward
+}
+
+void turnLeft() {  // Turn left
+  digitalWrite(LMP, HIGH); // Left Motor backward
+  digitalWrite(LMN, LOW);  // Left Motor forward
+  digitalWrite(RMP, HIGH); // Right Motor forward
+  digitalWrite(RMN, LOW);  // Right Motor backward
+}
+
+void Stop() {  // Stopbz2
+  digitalWrite(LMP, LOW);  // Left Motor backward
+  digitalWrite(LMN, LOW);  // Left Motor forward
+  digitalWrite(RMP, LOW);  // Right Motor forward
+  digitalWrite(RMN, LOW);  // Right Motor backward
+}
+
+void reverse() {  // Reverse function
+  Serial.println("Reversing...");
+  digitalWrite(LMP, HIGH);  // Left Motor backward
+  digitalWrite(LMN, LOW);   // Left Motor forward
+  digitalWrite(RMP, LOW);   // Right Motor backward
+  digitalWrite(RMN, HIGH);  // Right Motor forward
+  delay(1000);  // Reverse for 1 second (adjust as needed)
+  Stop();       // Stop after reversing
+}
